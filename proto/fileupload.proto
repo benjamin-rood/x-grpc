@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "github.com/benjamin-rood/x-grpc/fileupload";
+option go_package = "github.com/benjamin-rood/x-grpc/proto";
 
 package fileupload;
 
@@ -13,6 +13,7 @@ message UploadRequest {
   bytes file_chunk = 2;
 }
 
+// UploadResponse returns on success - otherwise server will return an appropriate gRPC error code
 message UploadResponse {
   string file_name = 1;
   uint32 size = 2; // in bytes

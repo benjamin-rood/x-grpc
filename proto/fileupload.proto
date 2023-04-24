@@ -4,16 +4,41 @@ option go_package = "github.com/benjamin-rood/x-grpc/proto";
 
 package fileupload;
 
+/**
+ * Uploader specifies a single gRPC call for a client-streaming
+ * file upload to a server.
+ *
+ * Servers are expected to return sensible status codes as per
+ * https://grpc.github.io/grpc/core/md_doc_statuscodes.html
+ */
 service Uploader {
   rpc UploadFile (stream UploadRequest) returns (UploadResponse);
 }
 
+/**
+ * UploadRequest requires a file name to write to disk,
+ * along with a streamed chunk of bytes. When `file_chunk` is nil, the stream is completed?
+ */
 message UploadRequest {
-  string file_name = 1;
-  bytes file_chunk = 2;
+  // TODO: implement as a oneof
+  // oneof request {
+  //   FileMetadata metadata = 1;
+  //   bytes chunk = 2; // #required
+  // }
+  bytes chunk = 2; // #required
 }
 
-// UploadResponse returns on success - otherwise server will return an appropriate gRPC error code
+// FIXME: use
+message FileMetadata {
+  string mime = 1;
+  string file_name = 2; // #required
+}
+
+/**
+ * UploadResponse returns on successfully completed file upload;
+ * otherwise server will return an appropriate gRPC error message
+ * along with an error status code.
+ */
 message UploadResponse {
   string file_name = 1;
   uint32 size = 2; // in bytes

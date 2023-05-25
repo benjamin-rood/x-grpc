@@ -1,5 +1,3 @@
-// internal/app/uploader.go
-
 package main
 
 import (
@@ -20,6 +18,7 @@ type filepath string
  */
 type Uploader struct {
 	uploadpb.UnsafeUploaderServer
+	wc io.WriteCloser
 }
 
 // Check interface conformity
@@ -33,11 +32,15 @@ func (u *Uploader) UploadFile(stream uploadpb.Uploader_UploadFileServer) error {
 	//   - unless EOF, read the bytes chunk from the UploadRequest message and write DIRECTLY to disk
 	// - when stream is finished, safely close and return nil
 	const p = "./received_file"
-	f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY, 0666)
-	if err != nil {
-		return status.Errorf(codes.Internal, "failed to open file: %v", err)
+	var err error
+	if u.wc == nil {
+		// fallback to using os.OpenFile
+		u.wc, err = os.OpenFile(p, os.O_CREATE|os.O_WRONLY, 0666)
+		if err != nil {
+			return status.Errorf(codes.Internal, "failed to open file: %v", err)
+		}
 	}
-	defer f.Close()
+	defer u.wc.Close()
 
 	var size uint32
 	for {
@@ -52,7 +55,7 @@ func (u *Uploader) UploadFile(stream uploadpb.Uploader_UploadFileServer) error {
 			return status.Errorf(codes.Internal, "failed to receive chunk: %v", err)
 		}
 
-		if _, err := f.Write(req.GetChunk()); err != nil {
+		if _, err := u.wc.Write(req.GetChunk()); err != nil {
 			return status.Errorf(codes.Internal, "failed to write chunk to file: %v", err)
 		}
 		size += uint32(len(req.GetChunk()))

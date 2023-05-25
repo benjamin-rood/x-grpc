@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"math/rand"
@@ -19,8 +20,8 @@ const (
 )
 
 func main() {
-	// Set up a connection to the server.
-	conn, err := grpc.Dial(":50080", grpc.WithInsecure())
+	// Set up a connection to the server (using insecure because this is not real)
+	conn, err := grpc.Dial(":59999", grpc.WithInsecure())
 	if err != nil {
 		log.Fatalf("failed to connect: %v", err)
 	}
@@ -49,8 +50,7 @@ func main() {
 		if err != nil {
 			log.Println(err)
 		}
-		log.Println(n)
-		log.Println(string(buf[:n]))
+		fmt.Println(string(buf[:n]))
 		if err != nil && err != io.EOF {
 			log.Fatalf("failed to read file: %v", err)
 		}

@@ -12,7 +12,7 @@ import (
 
 func main() {
 	// initialise TCP listener with a random port unlikely to conflict
-	ln, err := net.Listen("tcp", ":50080")
+	ln, err := net.Listen("tcp", ":59999")
 	if err != nil {
 		log.Fatalf("could not initialise tcp listener: %s", err)
 	}

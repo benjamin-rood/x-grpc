@@ -20,18 +20,8 @@ service Uploader {
  * along with a streamed chunk of bytes. When `file_chunk` is nil, the stream is completed?
  */
 message UploadRequest {
-  // TODO: implement as a oneof
-  // oneof request {
-  //   FileMetadata metadata = 1;
-  //   bytes chunk = 2; // #required
-  // }
-  bytes chunk = 2; // #required
-}
-
-// FIXME: use
-message FileMetadata {
   string file_name = 1; // #required
-  string mime_type = 2; // # optional mimetype string e.g. `application/json`
+  bytes chunk = 2; // #required
 }
 
 /**

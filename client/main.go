@@ -1,4 +1,6 @@
 // client.go
+// this is just a simple validator of the server implementation
+// for me to play around with uploading different files
 
 package main
 
@@ -6,17 +8,49 @@ import (
 	"context"
 	"io"
 	"log"
+	"mime"
 	"os"
 
 	uploadpb "github.com/benjamin-rood/x-grpc/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 const (
-	chunkSize = 100 * 1024 // Upload chunks of 100KB
+	// play around with different chunk sizes
+	kb        = 1024
+	mb        = kb * kb
+	chunkSize = 100 * kb // Upload chunks of 100KB
 )
 
 func main() {
+	if len(os.Args) < 2 {
+		log.Fatal("File path argument is missing.")
+	}
+
+	filePath := os.Args[1]
+
+	// Open the file to be uploaded.
+	file, err := os.Open(filePath)
+	if err != nil {
+		log.Fatalf("failed to open file: %s", err)
+	}
+	defer file.Close()
+
+	// get info on the file to be uploaded
+	fileInfo, err := file.Stat()
+	if err != nil {
+		log.Fatalf("could not stat the file to upload: %s", err)
+	}
+	fileName := fileInfo.Name()
+	mimeType := mime.TypeByExtension(fileName)
+
+	// Create a context with metadata including the Content-Type
+	ctx := metadata.NewOutgoingContext(context.Background(), metadata.New(map[string]string{
+		"Content-Type": mimeType,
+		"File-Name":    fileInfo.Name(),
+	}))
+
 	// Set up a connection to the server (using insecure because this is not real)
 	conn, err := grpc.Dial(":59999", grpc.WithInsecure())
 	if err != nil {
@@ -27,15 +61,8 @@ func main() {
 	// Create a client instance.
 	client := uploadpb.NewUploaderClient(conn)
 
-	// Open the file to be uploaded.
-	file, err := os.Open("./large_test.json")
-	if err != nil {
-		log.Fatalf("failed to open file: %v", err)
-	}
-	defer file.Close()
-
 	// Create a stream for uploading the file.
-	stream, err := client.UploadFile(context.Background())
+	stream, err := client.UploadFile(ctx)
 	if err != nil {
 		log.Fatalf("failed to open stream: %v", err)
 	}
@@ -54,7 +81,10 @@ func main() {
 			break
 		}
 		chunk := buf[:n]
-		if err := stream.Send(&uploadpb.UploadRequest{Chunk: chunk}); err != nil {
+		if err := stream.Send(&uploadpb.UploadRequest{
+			FileName: fileName,
+			Chunk:    chunk,
+		}); err != nil {
 			log.Fatalf("%s: failed to send chunk:\n<%s>", err, chunk)
 		}
 

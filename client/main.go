@@ -4,19 +4,16 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"os"
-	"time"
 
 	uploadpb "github.com/benjamin-rood/x-grpc/proto"
 	"google.golang.org/grpc"
 )
 
 const (
-	chunkSize = 128 // Upload chunks of 128 bytes.
+	chunkSize = 100 * 1024 // Upload chunks of 100KB
 )
 
 func main() {
@@ -31,7 +28,7 @@ func main() {
 	client := uploadpb.NewUploaderClient(conn)
 
 	// Open the file to be uploaded.
-	file, err := os.Open("./small_test.json")
+	file, err := os.Open("./large_test.json")
 	if err != nil {
 		log.Fatalf("failed to open file: %v", err)
 	}
@@ -50,20 +47,20 @@ func main() {
 		if err != nil {
 			log.Println(err)
 		}
-		fmt.Println(string(buf[:n]))
 		if err != nil && err != io.EOF {
 			log.Fatalf("failed to read file: %v", err)
 		}
 		if n == 0 {
 			break
 		}
-		if err := stream.Send(&uploadpb.UploadRequest{Chunk: buf[:n]}); err != nil {
-			log.Fatalf("failed to send chunk: %v", err)
+		chunk := buf[:n]
+		if err := stream.Send(&uploadpb.UploadRequest{Chunk: chunk}); err != nil {
+			log.Fatalf("%s: failed to send chunk:\n<%s>", err, chunk)
 		}
 
-		// Simulate connection issues by randomly sleeping between bursts.
-		sleepTime := rand.Intn(450) + 50 // Sleep for 50-500ms.
-		time.Sleep(time.Duration(sleepTime) * time.Millisecond)
+		// // Simulate connection issues by randomly sleeping between bursts.
+		// sleepTime := rand.Intn(450) + 50 // Sleep for 50-500ms.
+		// time.Sleep(time.Duration(sleepTime) * time.Millisecond)
 	}
 
 	// Close the stream and wait for the server to respond.

@@ -18,7 +18,7 @@ func main() {
 	}
 	defer ln.Close()
 
-	uploadService := &Uploader{}
+	uploadService := NewUploader()
 	grpcServer := grpc.NewServer()
 
 	uploadpb.RegisterUploaderServer(grpcServer, uploadService)

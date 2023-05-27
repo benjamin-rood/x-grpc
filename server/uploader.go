@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,8 +18,6 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
-
-type filepath string
 
 /**
  * Embed `UnsafeUploaderServer` instead of `UnimplementedUploaderServer`
@@ -46,7 +45,9 @@ type OpenWriteCloser interface {
 
 // default use - just a glorified wrapper around a call to `os.Create(...)`
 type diskWriter struct {
-	f *os.File
+	f               *os.File
+	writeDirPath    string
+	currentFilename string
 }
 
 // Check interface conformity
@@ -56,9 +57,11 @@ func (dw *diskWriter) Open(filename string) error {
 	// use the os package to open a file pointer so we can write bytes to disk
 	// to a file with the given filename
 	var err error
-	log.Printf("creating file '%s'\n", filename)
-	p := "./received_files/" + filename
-	dw.f, err = os.Create(p)
+	log.Printf("opening file '%s'\n", filename)
+	dw.currentFilename = filename
+	p := filepath.Join(dw.writeDirPath, filename)
+	// dw.f, err = os.Create(p)
+	dw.f, err = os.OpenFile(p, os.O_RDWR|os.O_CREATE, 0644)
 	return err
 }
 
@@ -67,62 +70,94 @@ func (dw *diskWriter) Write(p []byte) (int, error) {
 }
 
 func (dw *diskWriter) Close() error {
+	log.Println("closing file")
 	return dw.f.Close()
+}
+
+func (dw *diskWriter) Rename(newFilename string) error {
+	// potentially hairy to do on an open file... can safely use os.Rename as long as
+	// you have appropriate file system permissions and the file handle is not being
+	// actively used for any other operations. IF.
+	if err := os.Rename(
+		filepath.Join(dw.writeDirPath, dw.currentFilename),
+		filepath.Join(dw.writeDirPath, newFilename),
+	); err != nil {
+		return err
+	}
+	// update current filename
+	dw.currentFilename = newFilename
+	return nil
 }
 
 func NewCustomUploader(writer OpenWriteCloser) *Uploader {
 	return &Uploader{w: writer}
 }
 
-func NewUploader() *Uploader {
-	return &Uploader{w: &diskWriter{}}
+func DefaultUploader() *Uploader {
+	return &Uploader{w: &diskWriter{writeDirPath: "./received_files"}}
 }
 
 func (u *Uploader) UploadFile(stream uploadpb.Uploader_UploadFileServer) error {
+
 	// Extract the client's IP address from the context
 	clientIP, err := getClientIPFromContext(stream.Context())
 	if err != nil {
 		return err
 	}
-	// Create the random filename using the client's IP address
+	// Create a random string using the client's IP address & datetime stamp
 	tmpfn := generateTempFilename(clientIP)
-	// FIXME: change `UploadRequest` message definition to include a destination filename
-
-	// implement handling of stream upload from a client in the following way:
-	// - for each received stream part:
-	//   - unless EOF, read the bytes chunk from the UploadRequest message and write DIRECTLY to disk
-	// - when stream is finished, safely close and return nil
-	if err := u.w.Open(tmpfn); err != nil {
-		return status.Errorf(codes.Internal, "failed to open file: %v", err)
+	// grab the initial message segment to get the `file_name` & `meta_data` arguments
+	req, err := stream.Recv()
+	contentType := req.GetMimeType()
+	log.Println("Content-Type:", contentType)
+	fn := strings.TrimSpace(req.GetFileName())
+	// if there was a non-empty `file_name` argument provided, make use of it
+	if fn != "" {
+		fn = tmpfn + "_" + fn // end with the file_name as it could have a file extension suffix
+	} else {
+		fn = tmpfn
+	}
+	if err := u.w.Open(fn); err != nil {
+		return status.Errorf(codes.Internal, "failed to open file: %s", err)
 	}
 	defer func() {
-		log.Println("closing file")
 		u.w.Close()
 		log.Println("closed")
 	}()
 
+	// implement handling of stream upload from a client in the following way:
+	// - NOTE: we have already pulled the initial stream segment!
+	// - for each received stream segment:
+	//   - unless EOF, read the bytes chunk from the UploadRequest message and write DIRECTLY to disk
+	// 	 - get next segment
+	// - once we have received all the data, try to process the data as json
 	var size uint32
 	for {
-		req, err := stream.Recv()
 		if err == io.EOF {
+			// FIXME: Either process the json before returning the response, or send the filepath and contentType on a go channel for another process to take care of
+			// if err := processJSON("some path", contentType); err != nil {
+			// 	return status.Errorf(codes.Internal, "failed to process uploaded JSON data: %s", err)
+			// }
 			return stream.SendAndClose(&uploadpb.UploadResponse{
-				FileName: tmpfn,
+				FileName: fn,
 				Size:     size,
 			})
 		}
 		if err != nil {
-			return status.Errorf(codes.Internal, "failed to receive chunk: %v", err)
+			return status.Errorf(codes.Internal, "failed to receive chunk: %s", err)
 		}
 
 		if _, err := u.w.Write(req.GetChunk()); err != nil {
-			return status.Errorf(codes.Internal, "failed to write chunk to file: %v", err)
+			return status.Errorf(codes.Internal, "failed to write chunk to file: %s", err)
 		}
 		size += uint32(len(req.GetChunk()))
+		// get the next stream segment
+		req, err = stream.Recv()
 	}
 }
 
 func generateTempFilename(clientIP net.IP) string {
-	// Generate a short UUIDv1 string
+	// Generate a short UUIDv1 string, in lieu of some request ID
 	uuidV1 := generateShortUUIDv1()
 
 	// Get the current datetime in UTC
@@ -152,7 +187,7 @@ func getClientIPFromContext(ctx context.Context) (net.IP, error) {
 	// pr.Addr is a net.Addr containing the client's address information
 	// You can extract the IP address from the Addr if it's a net.TCPAddr or net.UDPAddr
 	// Example: clientIP := pr.Addr.(*net.TCPAddr).IP
-	clientIP := pr.Addr.(*net.IPNet).IP
+	clientIP := pr.Addr.(*net.TCPAddr).IP
 
 	return clientIP, nil
 }

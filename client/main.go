@@ -10,10 +10,10 @@ import (
 	"log"
 	"mime"
 	"os"
+	"path/filepath"
 
 	uploadpb "github.com/benjamin-rood/x-grpc/proto"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
 )
 
 const (
@@ -37,19 +37,13 @@ func main() {
 	}
 	defer file.Close()
 
-	// get info on the file to be uploaded
-	fileInfo, err := file.Stat()
-	if err != nil {
-		log.Fatalf("could not stat the file to upload: %s", err)
+	// Get the file name and extension of the file
+	fileName := filepath.Base(filePath)
+	fileExt := filepath.Ext(fileName)
+	mimeType := mime.TypeByExtension(fileExt)
+	if mimeType == "" {
+		log.Fatalln("can't detect mime-type of file", mimeType)
 	}
-	fileName := fileInfo.Name()
-	mimeType := mime.TypeByExtension(fileName)
-
-	// Create a context with metadata including the Content-Type
-	ctx := metadata.NewOutgoingContext(context.Background(), metadata.New(map[string]string{
-		"Content-Type": mimeType,
-		"File-Name":    fileInfo.Name(),
-	}))
 
 	// Set up a connection to the server (using insecure because this is not real)
 	conn, err := grpc.Dial(":59999", grpc.WithInsecure())
@@ -62,7 +56,7 @@ func main() {
 	client := uploadpb.NewUploaderClient(conn)
 
 	// Create a stream for uploading the file.
-	stream, err := client.UploadFile(ctx)
+	stream, err := client.UploadFile(context.Background())
 	if err != nil {
 		log.Fatalf("failed to open stream: %v", err)
 	}
@@ -84,6 +78,7 @@ func main() {
 		if err := stream.Send(&uploadpb.UploadRequest{
 			FileName: fileName,
 			Chunk:    chunk,
+			MimeType: mimeType,
 		}); err != nil {
 			log.Fatalf("%s: failed to send chunk:\n<%s>", err, chunk)
 		}

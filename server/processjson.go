@@ -12,6 +12,11 @@ import "fmt"
 	byte traversal of the JSON tree. This is not part of the assignment, so we will just
 	error out if the JSON file to be loaded exceeds available memory.
 */
-func modifyJSON() error {
+func processJSON(filePath, contentType string) error {
+	// if a JSON file, process it per the instructions!
+	if contentType == "application/json" {
+		// do something
+	}
+
 	return fmt.Errorf("not implemented")
 }

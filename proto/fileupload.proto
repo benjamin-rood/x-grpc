@@ -20,8 +20,9 @@ service Uploader {
  * along with a streamed chunk of bytes. When `file_chunk` is nil, the stream is completed?
  */
 message UploadRequest {
-  string file_name = 1; // #required
-  bytes chunk = 2; // #required
+  string file_name = 1; // optional
+  string mime_type = 2; // optional mimetype string e.g. `application/json`
+  bytes chunk = 3;      // #required
 }
 
 /**
@@ -31,6 +32,6 @@ message UploadRequest {
  */
 message UploadResponse {
   string file_name = 1; // #required
-  string mime_type = 2; // # optional mimetype string e.g. `application/json`
-  uint32 size = 3; // in bytes
+  string mime_type = 2; // optional mimetype string e.g. `application/json`
+  uint32 size = 3;      // in bytes
 }

@@ -20,6 +20,7 @@ type bufwc struct {
 }
 
 func (b *bufwc) Open(string) error {
+	// ignore filename
 	b.buffer = bytes.NewBuffer([]byte{})
 	return nil
 }
@@ -30,6 +31,10 @@ func (b *bufwc) Write(p []byte) (n int, err error) {
 
 func (b *bufwc) Close() error {
 	return nil // Since it's just a buffer, closing has no effect
+}
+
+func (b *bufwc) String() string {
+	return b.buffer.String()
 }
 
 // Check interface conformity

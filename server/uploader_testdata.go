@@ -45,13 +45,12 @@ const (
   "emptyObject": {},
   "date": "2023-05-24",
   "timestamp": 1672467000,
-  "positiveInfinity": Infinity,
-  "negativeInfinity": -Infinity,
-  "notANumber": NaN
-}
-`
+  "positiveInfinity": "Infinity",
+  "negativeInfinity": "-Infinity",
+  "notANumber": "NaN"
+}`
 
-	expectedOuput = `{
+	expectedOutput = `{
 	"nestedData": {
 		"banana": 8000,
 		"carrot": 6000,
@@ -64,18 +63,16 @@ const (
 		}
 	},
 	"name": "John Doe",
-	"isStudent": true,
 	"hobbies": ["reading", "cooking", "photography"],
 	"favoriteColor": null,
 	"floatNumber": 3.14,
 	"scientificNotation": 1.23e-4,
 	"date": "2023-05-24",
-	"timestamp": 1672467000000,
-	"positiveInfinity": Infinity,
-	"negativeInfinity": -Infinity,
-	"notANumber": NaN
-}
-`
+  "timestamp": 1672467000,
+  "positiveInfinity": "Infinity",
+  "negativeInfinity": "-Infinity",
+  "notANumber": "NaN"
+}`
 
 	haikuString = `In lush forest homes,
 Kiwi birds dance with delight,

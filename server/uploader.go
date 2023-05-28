@@ -41,27 +41,27 @@ type OpenWriteCloser interface {
 	Open(string) error
 	io.Writer
 	io.Closer
+	ProcessJSON() error
 }
 
-// default use - just a glorified wrapper around a call to `os.Create(...)`
+// default use - just a glorified wrapper around a call to `os.OpenFile(...)`
 type diskWriter struct {
 	f               *os.File
 	writeDirPath    string
 	currentFilename string
+	contentType     string
 }
 
 // Check interface conformity
 var _ OpenWriteCloser = &diskWriter{}
 
+// uses the os package to open a file pointer so we can write bytes to disk
+// to a file with the given filename
 func (dw *diskWriter) Open(filename string) error {
-	// use the os package to open a file pointer so we can write bytes to disk
-	// to a file with the given filename
+	dw.currentFilename = filename // must set this prior to doing anything else, used by filePath()
+	log.Printf("opening file '%s'\n", dw.filePath())
 	var err error
-	log.Printf("opening file '%s'\n", filename)
-	dw.currentFilename = filename
-	p := filepath.Join(dw.writeDirPath, filename)
-	// dw.f, err = os.Create(p)
-	dw.f, err = os.OpenFile(p, os.O_RDWR|os.O_CREATE, 0644)
+	dw.f, err = os.OpenFile(dw.filePath(), os.O_RDWR|os.O_CREATE, 0644)
 	return err
 }
 
@@ -74,18 +74,51 @@ func (dw *diskWriter) Close() error {
 	return dw.f.Close()
 }
 
-func (dw *diskWriter) Rename(newFilename string) error {
-	// potentially hairy to do on an open file... can safely use os.Rename as long as
-	// you have appropriate file system permissions and the file handle is not being
-	// actively used for any other operations. IF.
-	if err := os.Rename(
-		filepath.Join(dw.writeDirPath, dw.currentFilename),
-		filepath.Join(dw.writeDirPath, newFilename),
-	); err != nil {
-		return err
+func (dw *diskWriter) filePath() string {
+	if dw.currentFilename == "" {
+		// if this ever happens, then there is a fault in the code/order
+		// of execution and it's better to die and make sure it never happens
+		log.Fatal("trying to get file r/w path when none set")
 	}
-	// update current filename
-	dw.currentFilename = newFilename
+	return filepath.Join(dw.writeDirPath, dw.currentFilename)
+}
+
+func (dw *diskWriter) loadFile() ([]byte, error) {
+	return os.ReadFile(dw.filePath())
+}
+
+/*
+*
+
+	note: since the saved file has no guaranteed file size limit* (hypothetically it could
+	be greater than the availability of the available memory), the only way to prevent
+	crashing by running out of memory is to either assert an upper file size limit
+	beneath the currently availble memory on the system, or, we must do an on-disk
+	byte traversal of the JSON tree. This is not part of the assignment, so we will just
+	error out if the JSON file to be loaded exceeds available memory.
+*/
+func (dw *diskWriter) ProcessJSON() error {
+	// nasty, under-the-covers bullshit approach done to save time
+	// if a JSON file, process it per the instructions!
+	if dw.contentType == "application/json" {
+		// open file again, permitted to load it all in to memory
+		fileContent, err := dw.loadFile()
+		if err != nil {
+			return err
+		}
+		// make changes described in bonus requirements
+		modifiedData, err := processJSON(fileContent)
+		if err != nil {
+			return err
+		}
+		// overwrite file contents with modified JSON data
+		if err := dw.Open(dw.currentFilename); err != nil {
+			return err
+		}
+		if _, err := dw.Write(modifiedData); err != nil {
+			return fmt.Errorf("failed to write modified JSON data to file: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -93,11 +126,20 @@ func NewCustomUploader(writer OpenWriteCloser) *Uploader {
 	return &Uploader{w: writer}
 }
 
+const receivedFilesDir = "./received_files"
+
 func DefaultUploader() *Uploader {
-	return &Uploader{w: &diskWriter{writeDirPath: "./received_files"}}
+	return &Uploader{w: &diskWriter{writeDirPath: receivedFilesDir}}
 }
 
 func (u *Uploader) UploadFile(stream uploadpb.Uploader_UploadFileServer) error {
+	close := func() {
+		if err := u.w.Close(); err != nil {
+			log.Fatalf("could not close file: %s", err)
+		}
+		log.Println("closed")
+	}
+	defer close()
 
 	// Extract the client's IP address from the context
 	clientIP, err := getClientIPFromContext(stream.Context())
@@ -120,10 +162,6 @@ func (u *Uploader) UploadFile(stream uploadpb.Uploader_UploadFileServer) error {
 	if err := u.w.Open(fn); err != nil {
 		return status.Errorf(codes.Internal, "failed to open file: %s", err)
 	}
-	defer func() {
-		u.w.Close()
-		log.Println("closed")
-	}()
 
 	// implement handling of stream upload from a client in the following way:
 	// - NOTE: we have already pulled the initial stream segment!
@@ -134,10 +172,12 @@ func (u *Uploader) UploadFile(stream uploadpb.Uploader_UploadFileServer) error {
 	var size uint32
 	for {
 		if err == io.EOF {
+			// finish writing
+			close()
 			// FIXME: Either process the json before returning the response, or send the filepath and contentType on a go channel for another process to take care of
-			// if err := processJSON("some path", contentType); err != nil {
-			// 	return status.Errorf(codes.Internal, "failed to process uploaded JSON data: %s", err)
-			// }
+			if err := u.w.ProcessJSON(); err != nil {
+				return status.Errorf(codes.Internal, "failed to process uploaded JSON data: %s", err)
+			}
 			return stream.SendAndClose(&uploadpb.UploadResponse{
 				FileName: fn,
 				Size:     size,
@@ -184,9 +224,6 @@ func getClientIPFromContext(ctx context.Context) (net.IP, error) {
 		return nil, errors.New("failed to extract peer information from context")
 	}
 
-	// pr.Addr is a net.Addr containing the client's address information
-	// You can extract the IP address from the Addr if it's a net.TCPAddr or net.UDPAddr
-	// Example: clientIP := pr.Addr.(*net.TCPAddr).IP
 	clientIP := pr.Addr.(*net.TCPAddr).IP
 
 	return clientIP, nil

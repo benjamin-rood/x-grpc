@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -57,6 +58,10 @@ func NewCustomUploader(writer OpenWriteCloserLoader) *Uploader {
 const receivedFilesDir = "./received_files"
 
 func DefaultUploader() *Uploader {
+	// create folder where uploaded files will go
+	if err := os.MkdirAll(receivedFilesDir, os.ModePerm); err != nil {
+		panic(err)
+	}
 	return &Uploader{io_thingee: &diskWriter{writeDirPath: receivedFilesDir}}
 }
 

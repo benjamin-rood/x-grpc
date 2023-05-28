@@ -7,8 +7,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -26,115 +24,45 @@ import (
  */
 type Uploader struct {
 	uploadpb.UnsafeUploaderServer
-	w OpenWriteCloser
+
+	// embedded type that does all the other stuff
+	io_thingee OpenWriteCloserLoader
+	// it's an 80s-90s kiwi childhood reference... why yes I am spending too much time on this,
+	// and I can't think of a sensible thing to call this and I'm going nuts, sorry
+	// see: https://en.wikipedia.org/wiki/Thingee
+	// and: https://www.youtube.com/watch?v=GC3LK1nx-DU
 }
 
 // Check interface conformity
 var _ uploadpb.UploaderServer = &Uploader{}
 
-// why define this interface?
-// 1. good practice, makes the implementation easily customisable and extendable
-// 2. makes Uploader/UploadFile implementation *testable* -- we can write the upload
-// to an in-memory buffer and confirm what UploadFile writes without needing to write
-// to disk and then having to clean that up
-type OpenWriteCloser interface {
+// ughhhh naming is hard
+type OpenWriteCloserLoader interface {
+	// why define this interface?
+	// 1. good practice, makes the implementation easily customisable and extendable
+	// 2. makes Uploader/UploadFile implementation *testable*
+	//		-- we can implement an in-memory version which writes the upload to a bytes.Buffer
+	//		& confirm what UploadFile writes without needing to write to disk (avoid whenever possible)
+	//		and then having to clean that up afterwards as part of a test
 	Open(string) error
 	io.Writer
 	io.Closer
-	ProcessJSON() error
+	Load(string) ([]byte, error)
 }
 
-// default use - just a glorified wrapper around a call to `os.OpenFile(...)`
-type diskWriter struct {
-	f               *os.File
-	writeDirPath    string
-	currentFilename string
-	contentType     string
-}
-
-// Check interface conformity
-var _ OpenWriteCloser = &diskWriter{}
-
-// uses the os package to open a file pointer so we can write bytes to disk
-// to a file with the given filename
-func (dw *diskWriter) Open(filename string) error {
-	dw.currentFilename = filename // must set this prior to doing anything else, used by filePath()
-	log.Printf("opening file '%s'\n", dw.filePath())
-	var err error
-	dw.f, err = os.OpenFile(dw.filePath(), os.O_RDWR|os.O_CREATE, 0644)
-	return err
-}
-
-func (dw *diskWriter) Write(p []byte) (int, error) {
-	return dw.f.Write(p)
-}
-
-func (dw *diskWriter) Close() error {
-	log.Println("closing file")
-	return dw.f.Close()
-}
-
-func (dw *diskWriter) filePath() string {
-	if dw.currentFilename == "" {
-		// if this ever happens, then there is a fault in the code/order
-		// of execution and it's better to die and make sure it never happens
-		log.Fatal("trying to get file r/w path when none set")
-	}
-	return filepath.Join(dw.writeDirPath, dw.currentFilename)
-}
-
-func (dw *diskWriter) loadFile() ([]byte, error) {
-	return os.ReadFile(dw.filePath())
-}
-
-/*
-*
-
-	note: since the saved file has no guaranteed file size limit* (hypothetically it could
-	be greater than the availability of the available memory), the only way to prevent
-	crashing by running out of memory is to either assert an upper file size limit
-	beneath the currently availble memory on the system, or, we must do an on-disk
-	byte traversal of the JSON tree. This is not part of the assignment, so we will just
-	error out if the JSON file to be loaded exceeds available memory.
-*/
-func (dw *diskWriter) ProcessJSON() error {
-	// nasty, under-the-covers bullshit approach done to save time
-	// if a JSON file, process it per the instructions!
-	if dw.contentType == "application/json" {
-		// open file again, permitted to load it all in to memory
-		fileContent, err := dw.loadFile()
-		if err != nil {
-			return err
-		}
-		// make changes described in bonus requirements
-		modifiedData, err := processJSON(fileContent)
-		if err != nil {
-			return err
-		}
-		// overwrite file contents with modified JSON data
-		if err := dw.Open(dw.currentFilename); err != nil {
-			return err
-		}
-		if _, err := dw.Write(modifiedData); err != nil {
-			return fmt.Errorf("failed to write modified JSON data to file: %w", err)
-		}
-	}
-	return nil
-}
-
-func NewCustomUploader(writer OpenWriteCloser) *Uploader {
-	return &Uploader{w: writer}
+func NewCustomUploader(writer OpenWriteCloserLoader) *Uploader {
+	return &Uploader{io_thingee: writer}
 }
 
 const receivedFilesDir = "./received_files"
 
 func DefaultUploader() *Uploader {
-	return &Uploader{w: &diskWriter{writeDirPath: receivedFilesDir}}
+	return &Uploader{io_thingee: &diskWriter{writeDirPath: receivedFilesDir}}
 }
 
 func (u *Uploader) UploadFile(stream uploadpb.Uploader_UploadFileServer) error {
 	close := func() {
-		if err := u.w.Close(); err != nil {
+		if err := u.io_thingee.Close(); err != nil {
 			log.Fatalf("could not close file: %s", err)
 		}
 		log.Println("closed")
@@ -159,7 +87,7 @@ func (u *Uploader) UploadFile(stream uploadpb.Uploader_UploadFileServer) error {
 	} else {
 		fn = tmpfn
 	}
-	if err := u.w.Open(fn); err != nil {
+	if err := u.io_thingee.Open(fn); err != nil {
 		return status.Errorf(codes.Internal, "failed to open file: %s", err)
 	}
 
@@ -172,11 +100,13 @@ func (u *Uploader) UploadFile(stream uploadpb.Uploader_UploadFileServer) error {
 	var size uint32
 	for {
 		if err == io.EOF {
-			// finish writing
+			// finish writing received bytes
 			close()
-			// FIXME: Either process the json before returning the response, or send the filepath and contentType on a go channel for another process to take care of
-			if err := u.w.ProcessJSON(); err != nil {
-				return status.Errorf(codes.Internal, "failed to process uploaded JSON data: %s", err)
+			if contentType == "application/json" {
+				// load data if a json file per bonus requirements, save a modified copy
+				if err := ProcessJSON(fn, u.io_thingee); err != nil {
+					return status.Errorf(codes.Internal, "failed to perform modifications to uploaded JSON data: %s", err)
+				}
 			}
 			return stream.SendAndClose(&uploadpb.UploadResponse{
 				FileName: fn,
@@ -187,7 +117,7 @@ func (u *Uploader) UploadFile(stream uploadpb.Uploader_UploadFileServer) error {
 			return status.Errorf(codes.Internal, "failed to receive chunk: %s", err)
 		}
 
-		if _, err := u.w.Write(req.GetChunk()); err != nil {
+		if _, err := u.io_thingee.Write(req.GetChunk()); err != nil {
 			return status.Errorf(codes.Internal, "failed to write chunk to file: %s", err)
 		}
 		size += uint32(len(req.GetChunk()))

@@ -1,0 +1,48 @@
+{
+  "nestedData": {
+    "apple": 3,
+    "banana": 8,
+    "carrot": 6,
+    "duck": 5,
+    "elephant": 12,
+    "fig": 2,
+    "integerArray": [1, 2, 3, 4, 5],
+    "anotherObject": {
+      "grape": 9,
+      "honeydew": 7,
+      "papaya": 20
+    },
+    "yetAnotherObject": {
+      "orange": 4,
+      "pear": 11,
+      "watermelon": 7,
+      "kiwi": 10
+    }
+  },
+  "name": "John Doe",
+  "age": 30,
+  "isStudent": true,
+  "hobbies": ["reading", "cooking", "photography"],
+  "address": {
+    "street": "123 Main Street",
+    "city": "New York",
+    "country": "USA",
+    "geolocation": {
+      "latitude": 40.7128,
+      "longitude": -74.0060
+    }
+  },
+  "favoriteColor": null,
+  "floatNumber": 3.14,
+  "scientificNotation": 1.23e-4,
+  "emptyString": "",
+  "escapedString": "This is a \"quoted\" string.",
+  "unicodeString": "\u0048\u0065\u006C\u006C\u006F",
+  "emptyArray": [],
+  "emptyObject": {},
+  "date": "2023-05-24",
+  "timestamp": 1672467000,
+  "positiveInfinity": "Infinity",
+  "negativeInfinity": "Infinity",
+  "notANumber": "NaN"
+}

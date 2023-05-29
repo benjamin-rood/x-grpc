@@ -3,6 +3,7 @@ module github.com/benjamin-rood/x-grpc
 go 1.20
 
 require (
+	github.com/go-test/deep v1.1.0
 	github.com/google/uuid v1.3.0
 	google.golang.org/grpc v1.54.0
 	google.golang.org/protobuf v1.30.0

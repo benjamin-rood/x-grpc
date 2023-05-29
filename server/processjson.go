@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
-	"reflect"
 	"strconv"
 	"strings"
 )
@@ -124,12 +122,9 @@ func removeKeysWithVowelPrefixArray(arr []any) {
 
 func multiplyEvenIntegers(data map[string]any) {
 	for key, value := range data {
-		log.Printf("type: %s\n", reflect.TypeOf(value))
 		switch val := value.(type) {
 		case json.Number:
-			log.Println("Found a Number:", val)
 			if intVal, err := strconv.ParseInt(val.String(), 10, 64); err == nil {
-				log.Println("Found an integer:", intVal)
 				if intVal%2 == 0 {
 					// Multiply even integer values by 1000
 					data[key] = json.Number(strconv.FormatInt(intVal*1000, 10))
@@ -146,12 +141,9 @@ func multiplyEvenIntegers(data map[string]any) {
 
 func multiplyEvenIntegersArray(arr []any) {
 	for i, item := range arr {
-		log.Printf("type: %s\n", reflect.TypeOf(item))
 		switch val := item.(type) {
 		case json.Number:
-			log.Println("Found a Number:", val)
 			if intVal, err := strconv.ParseInt(val.String(), 10, 64); err == nil {
-				log.Println("Found an integer:", intVal)
 				if intVal%2 == 0 {
 					// Multiply even integer values by 1000
 					arr[i] = json.Number(strconv.FormatInt(intVal*1000, 10))

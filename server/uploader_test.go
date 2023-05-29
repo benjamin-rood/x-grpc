@@ -10,5 +10,6 @@ func TestUploaderService(t *testing.T) {
 	// register server with uploader service
 	// initialise grpc service client
 	// use generated client for testing
+	t.SkipNow()
 
 }

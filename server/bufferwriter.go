@@ -2,7 +2,7 @@ package main
 
 import (
 	"bytes"
-	"fmt"
+	"log"
 )
 
 // quick bootstrap of bytes.Buffer to use for testing
@@ -10,6 +10,13 @@ type bufwc struct {
 	buffer  *bytes.Buffer
 	m       map[string][]byte // quasi in-memory database of "files"
 	current string
+}
+
+func NewBufferWriter() *bufwc {
+	buf := bufwc{}
+	buf.buffer = bytes.NewBuffer([]byte{})
+	buf.m = make(map[string][]byte)
+	return &buf
 }
 
 // Check interface conformity
@@ -38,9 +45,19 @@ func (b *bufwc) Close() error {
 	return nil
 }
 
-func (b *bufwc) Load(string) ([]byte, error) {
-	// copy contents of current entry in database, perform modifications
-	return nil, fmt.Errorf("not implemented")
+func (b *bufwc) Load(key string) ([]byte, error) {
+	// return copy of data value of the matching key in database, perform modifications
+	value, ok := b.m[key]
+	if !ok {
+		// being lazy
+		log.Fatalf("no such entry '%s' to load", key)
+	}
+	data := make([]byte, len(value))
+	n := copy(data, value)
+	if n == 0 {
+		panic("no bytes copied")
+	}
+	return data, nil
 }
 
 func (b *bufwc) String() string {

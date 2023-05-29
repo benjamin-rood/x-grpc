@@ -68,7 +68,7 @@ const (
 	"floatNumber": 3.14,
 	"scientificNotation": 1.23e-4,
 	"date": "2023-05-24",
-  "timestamp": 1672467000,
+  "timestamp": 1672467000000,
   "positiveInfinity": "Infinity",
   "negativeInfinity": "-Infinity",
   "notANumber": "NaN"

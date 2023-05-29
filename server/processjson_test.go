@@ -19,6 +19,7 @@ func TestProcessJSON(t *testing.T) {
 		err      error
 	}{
 		{"blob with matching data to modify", "testBlob", buf, []byte(expectedOutput), nil},
+		// TODO: more cases, but, honestly, this validates correct functionality
 	}
 	for _, tt := range cases {
 		t.Run(tt.testName, func(t *testing.T) {

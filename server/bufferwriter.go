@@ -35,9 +35,15 @@ func (b *bufwc) Write(p []byte) (n int, err error) {
 // will save the content of the buffer into the "current" map entry
 // then clear the contents of the bytes.Buffer to be reused
 func (b *bufwc) Close() error {
+	if b.buffer.Len() == 0 {
+		return nil
+	}
 	// copy the contents of the buffer into a new byte slice
 	data := make([]byte, b.buffer.Len())
-	copy(data, b.buffer.Bytes())
+	n := copy(data, b.buffer.Bytes())
+	if n == 0 {
+		log.Fatalf("no bytes copied from current buffer!")
+	}
 	// save in the "database"
 	b.m[b.current] = data
 	// clear the contents of the buffer
@@ -55,9 +61,13 @@ func (b *bufwc) Load(key string) ([]byte, error) {
 	data := make([]byte, len(value))
 	n := copy(data, value)
 	if n == 0 {
-		panic("no bytes copied")
+		log.Fatalf("no bytes copied for entry with key '%s'", key)
 	}
 	return data, nil
+}
+
+func (b *bufwc) loadCurrent() ([]byte, error) {
+	return b.Load(b.current)
 }
 
 func (b *bufwc) String() string {

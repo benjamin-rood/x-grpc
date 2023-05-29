@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // default use - just a glorified wrapper around a call to `os.OpenFile(...)`
@@ -31,7 +32,10 @@ func (dw *diskWriter) Write(p []byte) (int, error) {
 
 func (dw *diskWriter) Close() error {
 	log.Println("closing file")
-	return dw.f.Close()
+	if err := dw.f.Close(); err != nil {
+		return ignoreErrorFileAlreadyClosed(err)
+	}
+	return nil
 }
 
 func (dw *diskWriter) Load(filename string) ([]byte, error) {
@@ -40,4 +44,25 @@ func (dw *diskWriter) Load(filename string) ([]byte, error) {
 
 func (dw *diskWriter) filePath(filename string) string {
 	return filepath.Join(dw.writeDirPath, filename)
+}
+
+func ignoreErrorFileAlreadyClosed(err error) error {
+	log.Println("inspecting error from closing file")
+	if err == nil {
+		return nil
+	}
+	log.Println(err)
+
+	// Check if the error is of type *os.PathError
+	pathErr, ok := err.(*os.PathError)
+	if !ok {
+		return err
+	}
+
+	// Check if the error message contains "file already closed"
+	if strings.Contains(pathErr.Err.Error(), "file already closed") {
+		// ignore
+		return nil
+	}
+	return err
 }
